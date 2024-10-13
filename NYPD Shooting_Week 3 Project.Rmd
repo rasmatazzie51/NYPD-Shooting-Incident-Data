@@ -1,0 +1,188 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+# Analysis of Shooting Victims in New York City from 2006 to 2023
+
+---
+title: "DTSA 5301 Week 3, NYPD Shooting Data Analysis"
+author: "WER"
+date: "2024-10-03"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r, echo=FALSE}
+library(tidyverse)
+
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+NYPD_data <- read_csv(url_in)
+```
+
+### Summary of NYPD Data to check available columns
+```{r, echo=FALSE}
+summary(NYPD_data)
+```
+
+### Selecting Only those columns of interest:
+
+1. Borough
+
+1. Occurance Date
+
+1. Did the shooting result in death? (ie murder?)
+
+1. Perpetrator's Age group
+
+1. Victim's Age group
+
+1. Victim's Sex
+
+### Checked for and cleaned up rows missing data (ie null, or NA) or clearly erroneous values such as 1028, 224, 940
+```{r, echo=FALSE}
+df <- NYPD_data %>% select(BORO, OCCUR_DATE, STATISTICAL_MURDER_FLAG, VIC_SEX, PERP_AGE_GROUP, VIC_AGE_GROUP)
+df <- df %>% drop_na(PERP_AGE_GROUP) %>% filter(PERP_AGE_GROUP!="(null)")
+df <- df %>% filter(VIC_SEX %in% c("M", "F"))
+df <- df %>% filter(! PERP_AGE_GROUP %in% c("UNKNOWN", 1028, 224, 1020, 940))
+unique(df['PERP_AGE_GROUP'])
+unique(df['VIC_AGE_GROUP'])
+df <- df %>% filter(! VIC_AGE_GROUP %in% c("UNKNOWN", 1022))
+
+# Converts year strings to integer years
+to_year <- function (s) { return( as.integer(format(as.Date(s, format = "%m/%d/%Y"), "%Y")) ) }
+# Add a year column as integer from the OCCUR_DATE strings
+df <- df %>% mutate(year=to_year(OCCUR_DATE))
+df <- df %>% mutate(is_female=(VIC_SEX=='M'))
+
+# Select just the 2021
+# df %>% filter(year==2021)
+
+#> nrow( df %>% filter(STATISTICAL_MURDER_FLAG == FALSE) )
+#[1] 11310
+#> nrow( df %>% filter(STATISTICAL_MURDER_FLAG == TRUE) )
+#[1] 3531
+
+# Select a perp-age_group category
+#n25_44 = nrow( df %>% filter(PERP_AGE_GROUP == '25-44') )
+
+all_age_groups = sort(unique(df$PERP_AGE_GROUP)) # as a tibble
+#> all_age_groups$PERP_AGE_GROUP    # -- column as an array
+#[1] "25-44" "18-24" "45-64" "<18"   "65+"  
+
+counts = sapply( all_age_groups, function(category) nrow(df %>% filter(PERP_AGE_GROUP == category)) )
+#> counts
+#25-44 18-24 45-64   <18   65+ 
+# 6003  6425   694  1680    65 
+#> typeof(counts).    # I think it means an integer array
+#[1] "integer"
+
+
+# Can make a frame...
+#data <- data.frame(
+#  age = all_age_groups$PERP_AGE_GROUP,
+#  count = counts
+#)
+# But is just as easy to use the array data
+barplot(counts,
+        border=F,
+        names.arg=all_age_groups, 
+        main="Shootings by Age Group in New York City between 2006-2023",
+        xlab = "Age Group of Perpetrator",
+        ylab = "Number of Shootings")
+
+```
+
+Years included in the data:
+```{r, echo = FALSE}
+sort(unique(df$year))
+```
+
+### The bar plot above represents the number of shootings by age group between 2006 - 2023
+
+
+```{r, echo = FALSE}
+all_age_groups_vic = sort(unique(df$VIC_AGE_GROUP))
+counts = sapply( all_age_groups_vic, function(category) nrow(df %>% filter(VIC_AGE_GROUP == category)) )
+#> counts
+#25-44 18-24 45-64   <18   65+ 
+# 6003  6425   694  1680    65 
+#> typeof(counts).    # I think it means an integer array
+#[1] "integer"
+
+# Can make a frame...
+#data <- data.frame(
+#  age = all_age_groups$PERP_AGE_GROUP,
+#  count = counts
+#)
+# But is just as easy to use the array data
+barplot(counts,
+        border=F,
+        names.arg=all_age_groups_vic, 
+        main="Shooting Victims by Age Group in New York City between 2006-2023",
+        xlab = "Age Group of Victim",
+        ylab = "Number of Shootings")
+```
+
+
+### The bar plot above represents the number of shooting victims by age group between 2006 - 2023
+
+### Modeling:
+
+1) Below is a summary of a linear model showing the likelihood of a shooting resulting in murder in each of the Boroughs.  Given that the STATISTICAL_MURDER_FLAG column consists of T/F (meaning there are only 2 options), a linear model is not a good fit because it can easily go out the upper bound. A logarithmic model may work better because it would constrain the data to between 0-1.  I included it in my report here because it is a good excercise for me to practice understanding the types & constraints of data one could be working with.  Indeed, when I tried to graph it, R gave me an error. 
+
+```{r, echo=FALSE}
+murder_model <- lm(STATISTICAL_MURDER_FLAG ~ BORO, data = df)
+summary(murder_model)
+```
+2) A second attempt at modeling. Using the STATISTICAL_MURDER_FLAG again, but this time using it to predict the likelihood of a shooting victim also receiving a TRUE statement, after sorting out Female & Male. This case works better as a linear model because now instead of having 2 values, we have 1000s of rows of "Female" and 1000s of rows of "Male" in our Shooting victims and we can predict the likelihood of a shooting resulting in a murder. 
+
+```{r, echo=FALSE}
+murder_model <- lm(STATISTICAL_MURDER_FLAG ~ is_female, data = df)
+summary(murder_model)
+model_pred_inputs <- tibble(
+  is_female = c(TRUE, FALSE),
+)
+predictions <- predict(murder_model, newdata = model_pred_inputs)
+```
+
+Running the "Predictions" model to check whether the numbers look close to something one might expect:
+```{r, echo=FALSE}
+predictions
+#        1         2 
+#0.2366650 0.2806604     # Looks about right *given the data*
+```
+
+```{r, echo=FALSE}
+barplot(predictions,
+        border=F,
+        names.arg=c("Female victims", "Male victims"), 
+        main="Likelihood of murder of a shooting victim given sex",
+        xlab = "Sex",
+        ylab = "Murder Likelihood")
+```
+
+### The above Barplot is using the "predictions" model to estimate the likelihood of a shooting resulting in being noted as a murder
+
+### Observations:
+
+The younger age groups are responsible for far more shootings in New York City than the minors and the 65+ group. The age groups 18-25, and 25-44 are responsible for the most shootings, and contain the most victims. It is interesting to me that the largest age group for Perpetrators is 18-25, whereas the largest group of victims is 25-44. Is this because younger people "tend" to be more impulsive, less mature?  Do people in the older (and younger) age groups have other things to worry about (ie school, children, jobs)? 
+
+The Murder prediction indicates the chance of a shooting will result in a murder. The prediction indicates that given a victim is female, they are slightly less likely to be murdered than males (0.24 vs 0.28). Why? Perhaps because there are more males involved in shooting crimes? Or because females tend to have a different physique? This could be explored further by checking to see if there are more male victims than female. 
+
+### Sources of bias/error:
+
+ - **Removal of "null" entries:** I removed those entries that listed "null" or NA, or included strange numbers (ie 1028) under the age group column. This made for a clean graph, but in so doing I also removed potentially useful information. It is possible that the "nulls" are not identically nor randomly distributed throughout the data. It could also be useful to see how many entries included these (likely) mistakes. Could the missing information be from poor record keeping by the officers on scene (for example), or poor data entry?   
+ 
+ - **Human error:** The source of the data is human input, which is prone to errors and misinformation. Certainly there is bias in the data collection. Can we be certain that *all* shooting incidents have been recorded, and that *all* of the demographic information has A) been recorded and B) recorded accurately.
+ 
+ - **Sample size:** This shooting data is limited to New York City and may not be representative of shooting events on a larger scale (ie nationally)
+ 
+ - **Binary vs Non-Binary Gender types:** The data lists only "Male" and "Female", which is becoming a much broader category in recent years. If a victim is non-binary, for example, where would they get categorized? And for the purposes of this study, is it relevant?  
+ 
+ - **Reporting of incidents:** Are all incidents reported? There could be shooting incidents that did not get reported due to language barriers or fear (of retaliation, for example).
+ 
+```{r, echo =FALSE}
+barplot(table(data$BORO),las = 1, main = "Locations of Shootings ", ylab ="Count")
+```
