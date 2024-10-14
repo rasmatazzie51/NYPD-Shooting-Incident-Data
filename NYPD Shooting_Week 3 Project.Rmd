@@ -182,7 +182,3 @@ The Murder prediction indicates the chance of a shooting will result in a murder
  - **Binary vs Non-Binary Gender types:** The data lists only "Male" and "Female", which is becoming a much broader category in recent years. If a victim is non-binary, for example, where would they get categorized? And for the purposes of this study, is it relevant?  
  
  - **Reporting of incidents:** Are all incidents reported? There could be shooting incidents that did not get reported due to language barriers or fear (of retaliation, for example).
- 
-```{r, echo =FALSE}
-barplot(table(data$BORO),las = 1, main = "Locations of Shootings ", ylab ="Count")
-```
